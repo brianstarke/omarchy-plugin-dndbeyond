@@ -195,6 +195,19 @@ Panel {
     ddb.selectCharacter(id)
   }
 
+  readonly property var visibleCharacters: {
+    var out = []
+    for (var i = 0; i < ddb.characters.length; i++)
+      if (!ddb.characters[i].hidden) out.push(ddb.characters[i])
+    return out
+  }
+
+  function isConfigId(id) {
+    for (var i = 0; i < ddb.configCharacterIds.length; i++)
+      if (String(ddb.configCharacterIds[i]) === String(id)) return true
+    return false
+  }
+
   // Resolve an id to a name once the helper's list has it, else the id.
   function characterName(id) {
     for (var i = 0; i < ddb.characters.length; i++)
@@ -716,19 +729,20 @@ Panel {
 
             PanelSeparator { foreground: root.foreground }
 
-            // ---- additional characters (config.json characterIds) ----
+            // ---- characters: hide from picker, add/remove extras --------------
             Text {
               width: parent.width
               wrapMode: Text.Wrap
-              text: "Additional characters — IDs from the dndbeyond.com/characters/<id> URL, for shared or private characters the account list misses. Stored in config.json."
+              text: "Characters — hide any from the picker. Add extras (shared or private characters the account list misses) by ID from the dndbeyond.com/characters/<id> URL. Stored in config.json."
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
             }
 
             Repeater {
-              model: ddb.configCharacterIds
+              model: ddb.characters
               delegate: Item {
+                id: charRow
                 required property var modelData
                 width: parent.width
                 implicitHeight: Style.spacing.popupRowHeight
@@ -737,14 +751,31 @@ Panel {
                   anchors.left: parent.left
                   anchors.leftMargin: Style.space(4)
                   anchors.verticalCenter: parent.verticalCenter
-                  width: parent.width - Style.space(36)
-                  text: root.characterName(modelData) + "  ·  " + modelData
-                  color: root.foreground
+                  width: parent.width - hideLink.implicitWidth
+                           - (removeLink.visible ? removeLink.implicitWidth : 0) - Style.space(24)
+                  text: charRow.modelData.name + "  ·  " + charRow.modelData.id
+                  color: charRow.modelData.hidden ? root.dim : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
+                  font.strikeout: charRow.modelData.hidden === true
                   elide: Text.ElideRight
                 }
                 Text {
+                  id: hideLink
+                  anchors.right: removeLink.visible ? removeLink.left : parent.right
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: charRow.modelData.hidden ? "show" : "hide"
+                  color: hideHover.hovered ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  HoverHandler { id: hideHover; cursorShape: Qt.PointingHandCursor }
+                  TapHandler { onTapped: ddb.setCharacterHidden(charRow.modelData.id, !charRow.modelData.hidden) }
+                }
+                Text {
+                  id: removeLink
+                  visible: root.isConfigId(charRow.modelData.id)
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(6)
                   anchors.verticalCenter: parent.verticalCenter
@@ -754,7 +785,7 @@ Panel {
                   font.pixelSize: Style.font.body
                   font.bold: true
                   HoverHandler { id: removeIdHover; cursorShape: Qt.PointingHandCursor }
-                  TapHandler { onTapped: ddb.removeCharacterId(parent.parent.modelData) }
+                  TapHandler { onTapped: ddb.removeCharacterId(charRow.modelData.id) }
                   PanelToolTip { visible: removeIdHover.hovered; text: "Remove from config.json"; fontFamily: root.fontFamily }
                 }
               }
@@ -801,7 +832,7 @@ Panel {
           Column {
             width: parent.width
             spacing: Style.space(2)
-            visible: !root.settingsOpen && ddb.state === "ok" && ddb.characters.length > 0
+            visible: !root.settingsOpen && ddb.state === "ok" && root.visibleCharacters.length > 0
 
             CursorSurface {
               width: parent.width
@@ -848,7 +879,7 @@ Panel {
             }
 
             Repeater {
-              model: root.chooserOpen ? ddb.characters : []
+              model: root.chooserOpen ? root.visibleCharacters : []
               CursorSurface {
                 required property var modelData
                 width: column.width

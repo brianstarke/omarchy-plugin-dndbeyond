@@ -102,6 +102,18 @@ Item {
     root.refresh()
   }
 
+  function setCharacterHidden(id, hidden) {
+    var value = String(id)
+    writeConfig(function(cfg) {
+      var ids = (Array.isArray(cfg.hiddenCharacterIds) ? cfg.hiddenCharacterIds : []).map(String)
+      var index = ids.indexOf(value)
+      if (hidden && index === -1) ids.push(value)
+      if (!hidden && index !== -1) ids.splice(index, 1)
+      cfg.hiddenCharacterIds = ids
+    })
+    root.refresh()
+  }
+
   function setCookie(value) {
     var cookie = String(value || "").trim()
     if (cookie === "") return
@@ -176,20 +188,28 @@ Item {
     if (state === "ok") pickCharacter()
   }
 
-  // Prefer the helper-persisted selection if it still exists, else the first row.
+  // Prefer the helper-persisted selection if it still exists, else the first
+  // visible row; hidden characters are never auto-picked.
   function pickCharacter() {
     if (characters.length === 0) { sheet = null; sheetState = "idle"; return }
     if (selectedId !== "") {
       for (var i = 0; i < characters.length; i++) {
-        if (String(characters[i].id) === selectedId) {
+        if (String(characters[i].id) === selectedId && !characters[i].hidden) {
           characterId = selectedId
           loadSheet(selectedId)
           return
         }
       }
     }
-    characterId = String(characters[0].id)
-    loadSheet(characterId)
+    for (var j = 0; j < characters.length; j++) {
+      if (!characters[j].hidden) {
+        characterId = String(characters[j].id)
+        loadSheet(characterId)
+        return
+      }
+    }
+    sheet = null
+    sheetState = "idle"
   }
 
   function selectCharacter(id) {

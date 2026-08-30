@@ -325,6 +325,12 @@ def cmd_list(cfg, token, extra_ids=None):
             state["nameCache"] = cache
             save_state(state)
 
+    # Hidden characters stay in the output (the settings pane lists them to
+    # allow un-hiding); the picker filters on this flag.
+    hidden_ids = {str(x) for x in cfg.get("hiddenCharacterIds") or []}
+    for char in characters:
+        char["hidden"] = str(char["id"]) in hidden_ids
+
     if not characters:
         fail("error", "No characters found. Add \"userId\" or \"characterIds\" to %s." % config_path())
     emit({"state": "ok", "message": "", "characters": characters,
