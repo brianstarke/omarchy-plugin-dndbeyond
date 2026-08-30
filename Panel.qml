@@ -297,6 +297,8 @@ Panel {
       ddb.rest(kind)
       return "ok"
     }
+    function heal(amount: int): string { ddb.adjustHp(Math.max(1, amount)); return "ok" }
+    function damage(amount: int): string { ddb.adjustHp(-Math.max(1, amount)); return "ok" }
     function select(id: string): string { root.chooseCharacter(id); return "ok" }
     function settings(): string { root.settingsOpen = true; root.open(); return "ok" }
     function zoomPortrait(): string { root.open(); root.portraitZoom = true; return "ok" }
@@ -419,6 +421,8 @@ Panel {
         }
         onTextKey: function(t) {
           if (t === "r") ddb.refresh()
+          else if (t === "-" && sheet) ddb.adjustHp(-1)
+          else if (t === "=" && sheet) ddb.adjustHp(1)
           else if (t === "i" && sheet) root.roll("Initiative", sheet.initiative)
           else if (t === "s") root.settingsOpen = !root.settingsOpen
           else if (t === "c") root.chooserOpen = !root.chooserOpen
@@ -1218,7 +1222,46 @@ Panel {
       Row {
         width: parent.width
         spacing: Style.space(4)
-        StatBox { label: "HP"; value: sheet ? String(sheet.hp.current) + "/" + String(sheet.hp.max) : ""; sub: sheet && sheet.hp.temp > 0 ? "+" + sheet.hp.temp + " temp" : "" }
+        // HP with write-back: click −/+ for 1, right-click for 5.
+        StatBox {
+          label: "HP"
+          value: sheet ? String(sheet.hp.current) + "/" + String(sheet.hp.max) : ""
+          sub: ddb.adjustingHp ? "…" : (sheet && sheet.hp.temp > 0 ? "+" + sheet.hp.temp + " temp" : "")
+        }
+        Column {
+          spacing: Style.space(4)
+          anchors.verticalCenter: parent.verticalCenter
+          visible: sheet !== null
+
+          Text {
+            text: "+"
+            color: healHover.hovered ? Color.accent : root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            font.bold: true
+            HoverHandler { id: healHover; cursorShape: Qt.PointingHandCursor }
+            MouseArea {
+              anchors.fill: parent
+              acceptedButtons: Qt.LeftButton | Qt.RightButton
+              onClicked: function(mouse) { ddb.adjustHp(mouse.button === Qt.RightButton ? 5 : 1) }
+            }
+            PanelToolTip { visible: healHover.hovered; text: "Heal 1 (right-click 5)"; fontFamily: root.fontFamily }
+          }
+          Text {
+            text: "−"
+            color: damageHover.hovered ? root.urgent : root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            font.bold: true
+            HoverHandler { id: damageHover; cursorShape: Qt.PointingHandCursor }
+            MouseArea {
+              anchors.fill: parent
+              acceptedButtons: Qt.LeftButton | Qt.RightButton
+              onClicked: function(mouse) { ddb.adjustHp(mouse.button === Qt.RightButton ? -5 : -1) }
+            }
+            PanelToolTip { visible: damageHover.hovered; text: "Damage 1 (right-click 5)"; fontFamily: root.fontFamily }
+          }
+        }
         StatBox { label: "AC"; value: sheet ? String(sheet.ac) : "" }
         StatBox {
           label: "Init"

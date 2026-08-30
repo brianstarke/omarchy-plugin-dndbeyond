@@ -50,8 +50,12 @@ chips; the banner shows the breakdown (`Initiative 13 + 2 = 15`), with nat-20
 / nat-1 flair. Roll initiative with the `i` key, the Init box, or globally via
 IPC (see below).
 
+**HP tracking** — `+`/`−` buttons beside the HP box (click = 1, right-click = 5),
+or `-`/`=` keys. Writes back to D&D Beyond server-side, clamped to 0–max.
+
 **Rests** — short rest / long rest buttons write back to D&D Beyond
-server-side (two-click confirm). The only write API DDB still exposes.
+server-side (two-click confirm). Along with HP, the only write APIs DDB
+still exposes.
 
 **Settings pane** (gear button or `s`) — show/color HP, character name in
 bar, default tab, refresh interval, card width/height, additional character
@@ -128,6 +132,7 @@ omarchy-shell brianstarke.dndbeyond select 167909431
 omarchy-shell brianstarke.dndbeyond tab Spells
 omarchy-shell brianstarke.dndbeyond rollInitiative   # rolls + pops the card
 omarchy-shell brianstarke.dndbeyond rest short       # or long
+omarchy-shell brianstarke.dndbeyond heal 3           # or damage 2
 omarchy-shell brianstarke.dndbeyond status
 ```
 

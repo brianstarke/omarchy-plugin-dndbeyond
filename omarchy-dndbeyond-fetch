@@ -16,6 +16,8 @@ Commands:
   _raw <id>     Debug: fetch one character and dump the raw v5 payload.
   rest <short|long> <id>
                 Take a rest server-side (restores slots/HP), emit fresh sheet.
+  hp <id> <+N|-N>
+                Heal (+) or damage (-) the character, emit fresh sheet.
   auth-check    Verify the session cookie still exchanges for a token.
   _parse        Debug: read raw v5 character JSON on stdin, emit the sheet.
 
@@ -836,6 +838,23 @@ def cmd_sheet(cfg, token, char_id):
     emit({"state": "ok", "message": "", "sheet": transform_character(char)})
 
 
+def cmd_hp(cfg, token, char_id, delta):
+    """Apply healing (+delta) or damage (-delta) via the gameplay HP endpoint,
+    then emit the fresh sheet. Temp HP is passed through unchanged."""
+    url = "%s/character/v5/character/%s?includeCustomItems=true" % (CHARACTER_SERVICE, char_id)
+    char = unwrap(http_json(url, headers=bearer(token)))
+    con_mod = mod_of(ability_score(char, 3))
+    level = sum(c.get("level") or 0 for c in char.get("classes") or []) or 1
+    max_hp = compute_max_hp(char, con_mod, level)
+    removed = char.get("removedHitPoints") or 0
+    new_removed = max(0, min(max_hp, removed - delta))
+    put_url = "%s/character/v5/life/hp/damage-taken" % CHARACTER_SERVICE
+    body = {"characterId": int(char_id), "removedHitPoints": new_removed,
+            "temporaryHitPoints": char.get("temporaryHitPoints") or 0}
+    unwrap(http_json(put_url, headers=bearer(token), method="PUT", body=body))
+    cmd_sheet(cfg, token, char_id)
+
+
 def cmd_rest(cfg, token, kind, char_id):
     """Server-side rest: short restores pact magic/short-rest abilities,
     long additionally restores HP, slots, hit dice, death saves. Returns the
@@ -883,9 +902,16 @@ def main(argv):
         fail("error", "usage: omarchy-dndbeyond-fetch %s <character-id>" % command)
     if command == "rest" and len(argv) < 4:
         fail("error", "usage: omarchy-dndbeyond-fetch rest short|long <character-id>")
+    if command == "hp" and len(argv) < 4:
+        fail("error", "usage: omarchy-dndbeyond-fetch hp <character-id> <+N|-N>")
+    if command == "hp":
+        try:
+            int(argv[3])
+        except ValueError:
+            fail("error", "hp delta must be an integer, e.g. +3 or -5")
     if command == "select" and len(argv) < 3:
         fail("error", "usage: omarchy-dndbeyond-fetch select <character-id>")
-    if command not in ("list", "sheet", "_raw", "rest", "select", "auth-check"):
+    if command not in ("list", "sheet", "_raw", "rest", "hp", "select", "auth-check"):
         fail("error", "unknown command %r — try --help" % command)
 
     cfg = load_config()
@@ -906,6 +932,8 @@ def main(argv):
         emit(unwrap(http_json(url, headers=bearer(token))))
     elif command == "rest":
         cmd_rest(cfg, token, argv[2], argv[3])
+    elif command == "hp":
+        cmd_hp(cfg, token, argv[2], int(argv[3]))
     else:
         cmd_auth_check(cfg, token)
     return 0

@@ -269,6 +269,26 @@ Item {
     }
   }
 
+  // ---- HP adjustments (server-side write) ------------------------------------
+
+  property bool adjustingHp: false
+
+  // delta > 0 heals, delta < 0 damages. Helper clamps and emits the fresh sheet.
+  function adjustHp(delta) {
+    if (hpProc.running || characterId === "") return
+    adjustingHp = true
+    _sheetOut = ""
+    hpProc.command = [helperPath(), "hp", characterId, String(delta)]
+    hpProc.running = true
+  }
+
+  Process {
+    id: hpProc
+    running: false
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root._sheetOut = text }
+    onExited: function(code) { root.adjustingHp = false; root.applySheet(root._sheetOut) }
+  }
+
   // ---- rests (server-side write) --------------------------------------------
 
   property bool resting: false
