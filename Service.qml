@@ -289,6 +289,33 @@ Item {
     onExited: function(code) { root.adjustingHp = false; root.applySheet(root._sheetOut) }
   }
 
+  // ---- death saves (server-side write) ---------------------------------------
+
+  function setDeathSaves(successes, failures) {
+    if (deathSaveProc.running || characterId === "") return
+    _sheetOut = ""
+    deathSaveProc.command = [helperPath(), "deathsave", characterId, String(successes), String(failures)]
+    deathSaveProc.running = true
+  }
+
+  function addDeathSave(kind, count) {
+    if (!sheet || !sheet.deathSaves) return
+    var s = sheet.deathSaves.successCount || 0
+    var f = sheet.deathSaves.failCount || 0
+    if (kind === "success") s = Math.min(3, s + count)
+    else f = Math.min(3, f + count)
+    setDeathSaves(s, f)
+  }
+
+  function resetDeathSaves() { setDeathSaves(0, 0) }
+
+  Process {
+    id: deathSaveProc
+    running: false
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root._sheetOut = text }
+    onExited: function(code) { root.applySheet(root._sheetOut) }
+  }
+
   // ---- rests (server-side write) --------------------------------------------
 
   property bool resting: false

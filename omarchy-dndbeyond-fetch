@@ -18,6 +18,8 @@ Commands:
                 Take a rest server-side (restores slots/HP), emit fresh sheet.
   hp <id> <+N|-N>
                 Heal (+) or damage (-) the character, emit fresh sheet.
+  deathsave <id> <successes> <failures>
+                Set death save counts (0-3 each), emit fresh sheet.
   auth-check    Verify the session cookie still exchanges for a token.
   _parse        Debug: read raw v5 character JSON on stdin, emit the sheet.
 
@@ -809,6 +811,7 @@ def transform_character(char):
         "speed": ", ".join(speed_parts),
         "passivePerception": passive_perception,
         "hp": hp,
+        "deathSaves": char.get("deathSaves") or {"failCount": 0, "successCount": 0, "isStabilized": False},
         "hitDice": hit_dice,
         "ac": compute_ac(char, mod_of(scores.get(2, 10)), mod_of(scores.get(3, 10)),
                          mod_of(scores.get(5, 10))),
@@ -836,6 +839,16 @@ def cmd_sheet(cfg, token, char_id):
     if not isinstance(char, dict) or char.get("id") is None:
         fail("error", "Character %s not found or not shared with this account." % char_id)
     emit({"state": "ok", "message": "", "sheet": transform_character(char)})
+
+
+def cmd_deathsave(cfg, token, char_id, successes, failures):
+    """Set death save counts via the gameplay endpoint, then fresh sheet."""
+    put_url = "%s/character/v5/life/death-saves" % CHARACTER_SERVICE
+    body = {"characterId": int(char_id),
+            "successCount": max(0, min(3, successes)),
+            "failCount": max(0, min(3, failures))}
+    unwrap(http_json(put_url, headers=bearer(token), method="PUT", body=body))
+    cmd_sheet(cfg, token, char_id)
 
 
 def cmd_hp(cfg, token, char_id, delta):
@@ -909,9 +922,16 @@ def main(argv):
             int(argv[3])
         except ValueError:
             fail("error", "hp delta must be an integer, e.g. +3 or -5")
+    if command == "deathsave":
+        if len(argv) < 4:
+            fail("error", "usage: omarchy-dndbeyond-fetch deathsave <character-id> <successes> <failures>")
+        try:
+            int(argv[2 + 1]); int(argv[3 + 1])
+        except ValueError:
+            fail("error", "deathsave counts must be integers 0-3")
     if command == "select" and len(argv) < 3:
         fail("error", "usage: omarchy-dndbeyond-fetch select <character-id>")
-    if command not in ("list", "sheet", "_raw", "rest", "hp", "select", "auth-check"):
+    if command not in ("list", "sheet", "_raw", "rest", "hp", "deathsave", "select", "auth-check"):
         fail("error", "unknown command %r — try --help" % command)
 
     cfg = load_config()
@@ -934,6 +954,8 @@ def main(argv):
         cmd_rest(cfg, token, argv[2], argv[3])
     elif command == "hp":
         cmd_hp(cfg, token, argv[2], int(argv[3]))
+    elif command == "deathsave":
+        cmd_deathsave(cfg, token, argv[2], int(argv[3]), int(argv[4]))
     else:
         cmd_auth_check(cfg, token)
     return 0

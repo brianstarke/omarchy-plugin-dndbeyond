@@ -149,6 +149,17 @@ Panel {
   readonly property bool rollNat20: rollKind === "check" && rollDie === 20
   readonly property bool rollNat1: rollKind === "check" && rollDie === 1
 
+  // Flat d20; auto-applies the outcome: nat 20 regains 1 HP, nat 1 is two
+  // failures, 10+ a success, below a failure. Writes back via the service.
+  function rollDeathSave() {
+    if (!sheet) return
+    roll("Death save", 0)
+    if (rollDie === 20) ddb.adjustHp(1)
+    else if (rollDie === 1) ddb.addDeathSave("failure", 2)
+    else if (rollDie >= 10) ddb.addDeathSave("success", 1)
+    else ddb.addDeathSave("failure", 1)
+  }
+
   function roll(label, mod) {
     rollLabel = String(label)
     rollKind = "check"
@@ -1275,6 +1286,76 @@ Panel {
       }
 
       PanelSeparator { foreground: root.foreground }
+
+      // ---- death saves: only while at 0 HP ----
+      Column {
+        width: parent.width
+        spacing: Style.space(4)
+        visible: sheet && sheet.hp.current <= 0
+
+        Item {
+          width: parent.width
+          implicitHeight: dsHeader.implicitHeight
+          PanelSectionHeader {
+            id: dsHeader
+            anchors.left: parent.left
+            text: "Death saves"
+            foreground: root.urgent
+            fontFamily: root.fontFamily
+          }
+          Text {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(4)
+            anchors.verticalCenter: parent.verticalCenter
+            text: "reset"
+            color: dsResetHover.hovered ? root.urgent : root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            HoverHandler { id: dsResetHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: ddb.resetDeathSaves() }
+          }
+        }
+
+        Row {
+          width: parent.width
+          spacing: Style.space(16)
+
+          Text {
+            text: "󱅕 roll"
+            color: dsRollHover.hovered ? Color.accent : root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            font.bold: true
+            anchors.verticalCenter: parent.verticalCenter
+            HoverHandler { id: dsRollHover; cursorShape: Qt.PointingHandCursor }
+            MouseArea { anchors.fill: parent; onClicked: root.rollDeathSave() }
+            PanelToolTip { visible: dsRollHover.hovered; text: "d20, no modifier. Nat 20: regain 1 HP · nat 1: two failures"; fontFamily: root.fontFamily }
+          }
+          Text {
+            text: "✓ " + "●".repeat(sheet && sheet.deathSaves ? sheet.deathSaves.successCount : 0)
+                  + "○".repeat(3 - (sheet && sheet.deathSaves ? sheet.deathSaves.successCount : 0)) + " +"
+            color: dsSuccessHover.hovered ? Color.accent : root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            anchors.verticalCenter: parent.verticalCenter
+            HoverHandler { id: dsSuccessHover; cursorShape: Qt.PointingHandCursor }
+            MouseArea { anchors.fill: parent; onClicked: ddb.addDeathSave("success", 1) }
+            PanelToolTip { visible: dsSuccessHover.hovered; text: "Add a success (3 = stable)"; fontFamily: root.fontFamily }
+          }
+          Text {
+            text: "✗ " + "●".repeat(sheet && sheet.deathSaves ? sheet.deathSaves.failCount : 0)
+                  + "○".repeat(3 - (sheet && sheet.deathSaves ? sheet.deathSaves.failCount : 0)) + " +"
+            color: dsFailHover.hovered ? root.urgent : root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            anchors.verticalCenter: parent.verticalCenter
+            HoverHandler { id: dsFailHover; cursorShape: Qt.PointingHandCursor }
+            MouseArea { anchors.fill: parent; onClicked: ddb.addDeathSave("failure", 1) }
+            PanelToolTip { visible: dsFailHover.hovered; text: "Add a failure (3 = dead)"; fontFamily: root.fontFamily }
+          }
+        }
+      }
 
       Column {
         width: parent.width
