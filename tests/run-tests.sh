@@ -28,6 +28,10 @@ check $V '.sheet.hp.max' 15 "Vlix: CON excluded from baseHitPoints -> add CON x 
 check $V '.sheet.hp.current' 8 "Vlix: current HP"
 check $V '[.sheet.spells[] | select(.name=="Vicious Mockery")][0].attackSave' "WIS save DC 13" "Vlix: save spell carries DC"
 
+S=tests/fixture-scott.json
+check $S '[.sheet.spellSlots[] | .max] | join(",")' "4,2" "Scott (Bard 3): slots derived from full-caster table"
+check $S '.sheet.spellSlots[0].used' 0 "Scott: used counts from payload"
+
 if [[ $failures -gt 0 ]]; then
   echo "$failures check(s) failed" >&2
   exit 1

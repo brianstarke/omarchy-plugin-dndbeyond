@@ -65,6 +65,35 @@ ALIGNMENTS = {1: "Lawful Good", 2: "Neutral Good", 3: "Chaotic Good",
 ACTIVATION_TYPES = {1: "Action", 2: "No action", 3: "Bonus action", 4: "Reaction",
                     6: "Minute", 7: "Hour", 8: "Special"}
 COMPONENT_LETTERS = {1: "V", 2: "S", 3: "M"}
+# Full-caster slot table (index = character level), levels 1-9 slots.
+FULL_CASTER_SLOTS = {
+    1: [2], 2: [3], 3: [4, 2], 4: [4, 3], 5: [4, 3, 2], 6: [4, 3, 3],
+    7: [4, 3, 3, 1], 8: [4, 3, 3, 2], 9: [4, 3, 3, 3, 1], 10: [4, 3, 3, 3, 2],
+    11: [4, 3, 3, 3, 2, 1], 12: [4, 3, 3, 3, 2, 1], 13: [4, 3, 3, 3, 2, 1, 1],
+    14: [4, 3, 3, 3, 2, 1, 1], 15: [4, 3, 3, 3, 2, 1, 1, 1], 16: [4, 3, 3, 3, 2, 1, 1, 1],
+    17: [4, 3, 3, 3, 2, 1, 1, 1, 1], 18: [4, 3, 3, 3, 3, 1, 1, 1, 1],
+    19: [4, 3, 3, 3, 3, 2, 1, 1, 1], 20: [4, 3, 3, 3, 3, 2, 2, 1, 1],
+}
+FULL_CASTERS = {"Bard", "Cleric", "Druid", "Sorcerer", "Wizard"}
+HALF_CASTERS = {"Paladin", "Ranger"}
+THIRD_CASTER_SUBCLASSES = {"Eldritch Knight", "Arcane Trickster"}
+
+
+def caster_level(classes):
+    """Multiclass caster level for the slot table."""
+    total = 0
+    for cls in classes:
+        name = (cls.get("definition") or {}).get("name") or ""
+        level = cls.get("level") or 0
+        if name in FULL_CASTERS:
+            total += level
+        elif name in HALF_CASTERS:
+            total += level // 2
+        elif (cls.get("subclassDefinition") or {}).get("name") in THIRD_CASTER_SUBCLASSES:
+            total += level // 3
+    return total
+
+
 # Warlock pact magic by warlock level: (slot count, slot level).
 PACT_MAGIC_TABLE = {1: (1, 1), 2: (2, 1), 3: (2, 2), 4: (2, 2), 5: (2, 3),
                     6: (2, 3), 7: (2, 4), 8: (2, 4), 9: (2, 5), 10: (2, 5),
@@ -522,11 +551,22 @@ def transform_character(char):
             })
 
     slots = []
-    for slot in char.get("spellSlots") or []:
-        total = slot.get("count") if slot.get("count") is not None else slot.get("available")
-        used = slot.get("used") or 0
-        if total is not None and (total or used):
-            slots.append({"level": slot.get("level"), "max": max(total, used), "used": used})
+    slot_rows = char.get("spellSlots") or []
+    # 2024-rules sheets zero every "available" — when the payload carries no
+    # totals at all, derive them from the class slot table instead.
+    payload_has_totals = any((s.get("count") or s.get("available")) for s in slot_rows)
+    if payload_has_totals:
+        for slot in slot_rows:
+            total = slot.get("count") if slot.get("count") is not None else slot.get("available")
+            used = slot.get("used") or 0
+            if total is not None and (total or used):
+                slots.append({"level": slot.get("level"), "max": max(total, used), "used": used})
+    else:
+        cl = caster_level(classes)
+        table = FULL_CASTER_SLOTS.get(min(cl, 20), []) if cl else []
+        for index, count in enumerate(table):
+            used = next((s.get("used") or 0 for s in slot_rows if s.get("level") == index + 1), 0)
+            slots.append({"level": index + 1, "max": count, "used": min(used, count)})
     # Pact magic payload rows are per spell level with an unreliable "available"
     # (2024 sheets report 0). Slot count/level are table-driven, so derive the
     # max from the warlock level and take only "used" from the payload.
