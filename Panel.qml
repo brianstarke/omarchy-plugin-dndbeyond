@@ -342,6 +342,7 @@ Panel {
     owner: root
     bar: root.bar
     open: root.opened
+    focusTarget: cardLoader.item ? cardLoader.item.keyCatcherItem : null
     contentWidth: panel.fittedContentWidth(root.cardWidth)
     contentHeight: panel.fittedContentHeight(cardLoader.item ? cardLoader.item.implicitHeight : 0, root.cardCap)
 
@@ -360,6 +361,10 @@ Panel {
 
     Item {
       implicitHeight: column.implicitHeight
+
+      // KeyboardPanel force-focuses this on open; without it the keyCatcher
+      // never sees key presses (footer shortcuts dead).
+      property alias keyCatcherItem: keyCatcher
 
       function resetScroll() {
         if (sheetFlick.item) sheetFlick.item.contentY = 0
