@@ -1093,7 +1093,7 @@ Panel {
         Rectangle {
           anchors.fill: parent
           color: "#000000"
-          opacity: 0.85
+          opacity: 0.96
         }
         Image {
           anchors.centerIn: parent

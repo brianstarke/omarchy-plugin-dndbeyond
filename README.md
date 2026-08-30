@@ -53,6 +53,12 @@ IPC (see below).
 **HP tracking** — `+`/`−` buttons beside the HP box (click = 1, right-click = 5),
 or `-`/`=` keys. Writes back to D&D Beyond server-side, clamped to 0–max.
 
+**Death saves** — at 0 HP the Main tab grows a death-save section: flat-d20
+roll with auto-applied rules (nat 20 regains 1 HP, nat 1 is two failures),
+manual pip buttons, reset. Writes back to DDB.
+
+![death saves](screenshots/deathsaves.png)
+
 **Rests** — short rest / long rest buttons write back to D&D Beyond
 server-side (two-click confirm). Along with HP, the only write APIs DDB
 still exposes.
