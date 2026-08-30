@@ -4,7 +4,7 @@ Character sheets from your D&D Beyond account, right in the Omarchy bar.
 Pick a character, browse the sheet in tabs, roll dice, take rests — without
 opening a browser.
 
-![preview](preview.png)
+![preview](preview.png?v=2)
 
 Uses the same unofficial, undocumented endpoints the D&D Beyond web app uses.
 Not affiliated with or endorsed by D&D Beyond or Wizards of the Coast —
@@ -17,7 +17,7 @@ endpoints may change without notice.
 - Optional character name in the bar
 - Click opens the sheet card; right/middle-click refreshes
 
-![bar widget](screenshots/bar.png)
+![bar widget](screenshots/bar.png?v=2)
 
 **Main tab** — portrait (click for full-size), ability scores, saving throws,
 HP / AC / initiative / proficiency / speed / passive perception, hit dice,
@@ -28,7 +28,7 @@ bonuses.
 **Skills tab** — all 18 skills with proficiency (●) / expertise (◆) markers
 and final modifiers.
 
-![skills](screenshots/skills.png)
+![skills](screenshots/skills.png?v=2)
 
 **Spells tab** — spell slots (remaining/max, pact magic derived from the
 warlock table), spellcasting DC & attack bonus, spells grouped by level.
@@ -36,14 +36,19 @@ Click a spell to expand: full description, duration, components, material,
 save/attack type, at-higher-levels scaling. Attack-roll spells and damage
 spells get clickable roll chips.
 
-![spells](screenshots/spells.png)
+![spells](screenshots/spells.png?v=2)
 
 **Features** — class/subclass features, racial traits, feats (HTML stripped).
+
+![features](screenshots/features.png?v=2)
+
 **Inventory** — equipped first, attunement, quantities, currency.
+
+![inventory](screenshots/inventory.png?v=2)
 **Notes** — backstory, allies, enemies, organizations, personal possessions,
 other holdings/notes from the DDB notes fields.
 
-![notes](screenshots/notes.png)
+![notes](screenshots/notes.png?v=2)
 
 **Dice rolls** — click abilities, skills, attacks, damage, or spell attack
 chips; the banner shows the breakdown (`Initiative 13 + 2 = 15`), with nat-20
@@ -57,7 +62,7 @@ or `-`/`=` keys. Writes back to D&D Beyond server-side, clamped to 0–max.
 roll with auto-applied rules (nat 20 regains 1 HP, nat 1 is two failures),
 manual pip buttons, reset. Writes back to DDB.
 
-![death saves](screenshots/deathsaves.png)
+![death saves](screenshots/deathsaves.png?v=2)
 
 **Rests** — short rest / long rest buttons write back to D&D Beyond
 server-side (two-click confirm). Along with HP, the only write APIs DDB
@@ -67,9 +72,9 @@ still exposes.
 bar, default tab, refresh interval, card width/height, additional character
 IDs, and CobaltSession cookie management.
 
-![settings](screenshots/settings.png)
+![settings](screenshots/settings.png?v=2)
 
-![portrait zoom](screenshots/portrait.png)
+![portrait zoom](screenshots/portrait.png?v=2)
 
 ## Install
 
