@@ -73,6 +73,35 @@ Item {
 
   // Write the cookie back, preserving other keys; the cached bearer token
   // belongs to the old cookie, so it goes. Refresh once the write lands.
+  function writeConfig(mutate) {
+    var cfg = {}
+    try { cfg = JSON.parse(_configText) } catch (e) {}
+    if (typeof cfg !== "object" || cfg === null) cfg = {}
+    mutate(cfg)
+    configView.pendingSave = true
+    configView.setText(JSON.stringify(cfg, null, 2) + "\n")
+  }
+
+  function addCharacterId(id) {
+    var value = parseInt(String(id).trim(), 10)
+    if (!isFinite(value)) return
+    writeConfig(function(cfg) {
+      var ids = Array.isArray(cfg.characterIds) ? cfg.characterIds : []
+      if (ids.indexOf(value) !== -1) return
+      cfg.characterIds = ids.concat([value])
+    })
+    root.refresh()
+  }
+
+  function removeCharacterId(id) {
+    var value = parseInt(String(id), 10)
+    writeConfig(function(cfg) {
+      var ids = Array.isArray(cfg.characterIds) ? cfg.characterIds : []
+      cfg.characterIds = ids.filter(function(x) { return parseInt(x, 10) !== value })
+    })
+    root.refresh()
+  }
+
   function setCookie(value) {
     var cookie = String(value || "").trim()
     if (cookie === "") return
@@ -126,7 +155,7 @@ Item {
   Process {
     id: listProc
     running: false
-    command: [root.helperPath(), "list", "--extra-ids", String(root.setting("extraCharacterIds", ""))]
+    command: [root.helperPath(), "list"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root._listOut = text }
     onExited: function(code) { root.applyList(root._listOut) }
   }

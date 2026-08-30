@@ -195,6 +195,13 @@ Panel {
     ddb.selectCharacter(id)
   }
 
+  // Resolve an id to a name once the helper's list has it, else the id.
+  function characterName(id) {
+    for (var i = 0; i < ddb.characters.length; i++)
+      if (String(ddb.characters[i].id) === String(id)) return ddb.characters[i].name
+    return "Character " + id
+  }
+
   function fmtSigned(value) {
     var n = Number(value) || 0
     return (n >= 0 ? "+" : "") + n
@@ -709,36 +716,84 @@ Panel {
 
             PanelSeparator { foreground: root.foreground }
 
-            // ---- additional characters (helper merges these into the picker) ----
+            // ---- additional characters (config.json characterIds) ----
             Text {
               width: parent.width
               wrapMode: Text.Wrap
-              text: "Additional character IDs — comma-separated, from the dndbeyond.com/characters/<id> URL. For shared or private characters the account list misses."
+              text: "Additional characters — IDs from the dndbeyond.com/characters/<id> URL, for shared or private characters the account list misses. Stored in config.json."
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
             }
-            TextField {
-              width: parent.width
-              placeholderText: "123456789, 987654321"
-              foreground: root.foreground
-              accent: Color.accent
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              text: String(root.setting("extraCharacterIds", ""))
-              onAccepted: {
-                root.persistSetting("extraCharacterIds", text)
-                ddb.refresh()
+
+            Repeater {
+              model: ddb.configCharacterIds
+              delegate: Item {
+                required property var modelData
+                width: parent.width
+                implicitHeight: Style.spacing.popupRowHeight
+
+                Text {
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(4)
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: parent.width - Style.space(36)
+                  text: root.characterName(modelData) + "  ·  " + modelData
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  elide: Text.ElideRight
+                }
+                Text {
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "✕"
+                  color: removeIdHover.hovered ? root.urgent : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  font.bold: true
+                  HoverHandler { id: removeIdHover; cursorShape: Qt.PointingHandCursor }
+                  TapHandler { onTapped: ddb.removeCharacterId(parent.parent.modelData) }
+                  PanelToolTip { visible: removeIdHover.hovered; text: "Remove from config.json"; fontFamily: root.fontFamily }
+                }
               }
             }
-            Text {
-              visible: ddb.configCharacterIds.length > 0
+
+            Row {
               width: parent.width
-              wrapMode: Text.Wrap
-              text: "Also loaded from config.json: " + ddb.configCharacterIds.join(", ")
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              spacing: Style.space(8)
+
+              TextField {
+                id: addIdField
+                width: parent.width - addIdLink.implicitWidth - Style.space(8)
+                placeholderText: "Character ID, e.g. 167909431"
+                foreground: root.foreground
+                accent: Color.accent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                text: ""
+                onAccepted: {
+                  ddb.addCharacterId(text)
+                  text = ""
+                }
+              }
+              Text {
+                id: addIdLink
+                text: "＋ add"
+                color: addIdHover.hovered ? root.foreground : root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+                HoverHandler { id: addIdHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler {
+                  onTapped: {
+                    ddb.addCharacterId(addIdField.text)
+                    addIdField.text = ""
+                  }
+                }
+              }
             }
           }
 

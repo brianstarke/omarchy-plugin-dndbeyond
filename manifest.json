@@ -25,8 +25,7 @@
       "defaultTab": "Main",
       "showHealth": true,
       "colorHealth": true,
-      "showCharacterName": false,
-      "extraCharacterIds": ""
+      "showCharacterName": false
     },
     "schema": [
       { "key": "refreshIntervalSec", "type": "integer", "label": "Refresh interval (seconds)", "min": 60, "max": 3600, "step": 60, "defaultValue": 300, "description": "How often the open card re-fetches the selected character sheet." },
@@ -35,8 +34,7 @@
       { "key": "defaultTab", "type": "enum", "label": "Default tab", "options": ["Main", "Skills", "Spells", "Features", "Inventory", "Notes"], "defaultValue": "Main", "description": "The tab shown when the card opens." },
       { "key": "showHealth", "type": "boolean", "label": "Show HP in bar", "defaultValue": true, "description": "Show current/max hit points next to the dice glyph in the bar." },
       { "key": "colorHealth", "type": "boolean", "label": "Color HP by health", "defaultValue": true, "description": "Tint the bar HP numbers green above 75%, yellow between, red below 25%." },
-      { "key": "showCharacterName", "type": "boolean", "label": "Show character name in bar", "defaultValue": false, "description": "Show the selected character's name in the bar next to the dice glyph." },
-      { "key": "extraCharacterIds", "type": "string", "label": "Additional character IDs", "defaultValue": "", "description": "Comma-separated character IDs (from the dndbeyond.com/characters/<id> URL) to add to the picker, e.g. shared or private characters the account list misses." }
+      { "key": "showCharacterName", "type": "boolean", "label": "Show character name in bar", "defaultValue": false, "description": "Show the selected character's name in the bar next to the dice glyph." }
     ]
   }
 }

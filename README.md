@@ -101,8 +101,8 @@ to your D&D Beyond account; never commit or share it.
 
 The account list covers your own characters plus campaign rosters. For other
 shared/private characters, add their IDs (from `dndbeyond.com/characters/<id>`)
-in the settings pane ("Additional character IDs") or as `characterIds` in
-`config.json`. Names resolve automatically and are cached.
+in the settings pane's character list (add/remove rows), or as `characterIds`
+in `config.json`. Names resolve automatically and are cached.
 
 ## Usage
 
@@ -149,7 +149,6 @@ omarchy bar set brianstarke.dndbeyond defaultTab Spells
 omarchy bar set brianstarke.dndbeyond refreshIntervalSec 600
 omarchy bar set brianstarke.dndbeyond width 520
 omarchy bar set brianstarke.dndbeyond maxHeight 800
-omarchy bar set brianstarke.dndbeyond extraCharacterIds "123456789, 987654321"
 ```
 
 ## Files
