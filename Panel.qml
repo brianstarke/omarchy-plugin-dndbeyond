@@ -363,7 +363,7 @@ Panel {
       Text {
         visible: sheet !== null && root.boolSetting("showCharacterName", false)
         text: sheet ? String(sheet.name) : ""
-        color: root.dim
+        color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Math.round(button.fontSize * 0.85)
         anchors.verticalCenter: parent.verticalCenter
