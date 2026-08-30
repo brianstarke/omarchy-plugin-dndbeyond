@@ -1285,6 +1285,54 @@ Panel {
         StatBox { label: "Perc"; value: sheet ? String(sheet.passivePerception) : ""; sub: "passive" }
       }
 
+      // Rests write back to D&D Beyond server-side; per-slot increments are
+      // dead upstream (v5 write API 404s), so rests are the write path.
+      Row {
+        width: parent.width
+        spacing: Style.space(14)
+        visible: sheet !== null
+
+        Text {
+          text: "Rest:"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          anchors.verticalCenter: parent.verticalCenter
+        }
+        Text {
+          text: root.restArm === "short" ? "short rest?" : "short rest"
+          color: root.restArm === "short" ? Color.accent
+               : (shortRestHover.hovered ? root.foreground : root.dim)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+          anchors.verticalCenter: parent.verticalCenter
+          HoverHandler { id: shortRestHover; cursorShape: Qt.PointingHandCursor }
+          TapHandler { onTapped: root.requestRest("short") }
+          PanelToolTip { visible: shortRestHover.hovered; text: "Restores pact magic and short-rest abilities"; fontFamily: root.fontFamily }
+        }
+        Text {
+          text: root.restArm === "long" ? "long rest?" : "long rest"
+          color: root.restArm === "long" ? root.urgent
+               : (longRestHover.hovered ? root.foreground : root.dim)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+          anchors.verticalCenter: parent.verticalCenter
+          HoverHandler { id: longRestHover; cursorShape: Qt.PointingHandCursor }
+          TapHandler { onTapped: root.requestRest("long") }
+          PanelToolTip { visible: longRestHover.hovered; text: "Restores HP, all slots, hit dice, death saves"; fontFamily: root.fontFamily }
+        }
+        Text {
+          visible: ddb.resting
+          text: "resting…"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          anchors.verticalCenter: parent.verticalCenter
+        }
+      }
+
       PanelSeparator { foreground: root.foreground }
 
       // ---- death saves: only while at 0 HP ----
@@ -1540,53 +1588,6 @@ Panel {
         }
       }
 
-      // Rests write back to D&D Beyond server-side; per-slot increments are
-      // dead upstream (v5 write API 404s), so rests are the only write path.
-      Row {
-        width: parent.width
-        spacing: Style.space(14)
-        visible: sheet && sheet.spellSlots.length > 0
-
-        Text {
-          text: "Rest:"
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          anchors.verticalCenter: parent.verticalCenter
-        }
-        Text {
-          text: root.restArm === "short" ? "short rest?" : "short rest"
-          color: root.restArm === "short" ? Color.accent
-               : (shortRestHover.hovered ? root.foreground : root.dim)
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          anchors.verticalCenter: parent.verticalCenter
-          HoverHandler { id: shortRestHover; cursorShape: Qt.PointingHandCursor }
-          TapHandler { onTapped: root.requestRest("short") }
-          PanelToolTip { visible: shortRestHover.hovered; text: "Restores pact magic and short-rest abilities"; fontFamily: root.fontFamily }
-        }
-        Text {
-          text: root.restArm === "long" ? "long rest?" : "long rest"
-          color: root.restArm === "long" ? root.urgent
-               : (longRestHover.hovered ? root.foreground : root.dim)
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          anchors.verticalCenter: parent.verticalCenter
-          HoverHandler { id: longRestHover; cursorShape: Qt.PointingHandCursor }
-          TapHandler { onTapped: root.requestRest("long") }
-          PanelToolTip { visible: longRestHover.hovered; text: "Restores HP, all slots, hit dice, death saves"; fontFamily: root.fontFamily }
-        }
-        Text {
-          visible: ddb.resting
-          text: "resting…"
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          anchors.verticalCenter: parent.verticalCenter
-        }
-      }
       Repeater {
         model: sheet ? sheet.spellcasting : []
         delegate: InfoRow {
