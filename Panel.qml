@@ -43,6 +43,16 @@ Panel {
     return text === "true" || text === "yes" || text === "on" || text === "1"
   }
 
+  // Drop keys entirely so manifest defaults apply again.
+  function resetSettings(keys) {
+    var entry = { id: root.moduleName }
+    for (var existing in root.settings)
+      if (existing !== "id" && keys.indexOf(existing) === -1) entry[existing] = root.settings[existing]
+    root.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+  }
+
   // Settings persist into this widget's shell.json entry; the shell
   // hot-reloads it and every instance re-reads. Applied locally first so the
   // toggle throws on the click.
@@ -371,6 +381,12 @@ Panel {
       anchors.fill: parent
       active: panel.visible
       sourceComponent: cardComponent
+      // onOpenChanged reads focusTarget before this item exists, so it never
+      // focuses anything. Grab keyboard focus once the card actually loads.
+      onLoaded: Qt.callLater(function() {
+        if (panel.open && cardLoader.item && cardLoader.item.keyCatcherItem)
+          cardLoader.item.keyCatcherItem.forceActiveFocus()
+      })
     }
   }
 
@@ -698,6 +714,17 @@ Panel {
               value: Number(root.setting("maxHeight", 640))
               onReleased: function(value) { root.persistSetting("maxHeight", Math.round(value)) }
             }
+            Text {
+              width: parent.width
+              horizontalAlignment: Text.AlignRight
+              text: "reset size to default (480 × 640)"
+              color: resetSizeHover.hovered ? root.foreground : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              HoverHandler { id: resetSizeHover; cursorShape: Qt.PointingHandCursor }
+              TapHandler { onTapped: root.resetSettings(["width", "maxHeight"]) }
+            }
 
             PanelSeparator { foreground: root.foreground }
 
@@ -1016,7 +1043,7 @@ Panel {
               id: footRight
               anchors.right: parent.right
               anchors.rightMargin: Style.space(4)
-              text: "1-6 tabs · c character · r refresh · esc close"
+              text: "1-6 tabs · i initiative · r refresh · esc close"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
