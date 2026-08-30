@@ -602,10 +602,9 @@ Panel {
             }
           }
 
-          // ---- settings pane ----
-          Column {
+          // ---- settings pane (scrolls when taller than the card cap) ----
+          SheetFlick {
             width: parent.width
-            spacing: Style.space(4)
             visible: root.settingsOpen
 
             Toggle {
@@ -905,45 +904,63 @@ Panel {
               }
             }
 
-            Repeater {
-              model: root.chooserOpen ? root.visibleCharacters : []
-              CursorSurface {
-                required property var modelData
-                width: column.width
-                implicitHeight: Style.spacing.popupRowHeight
-                hasCursor: String(modelData.id) === ddb.characterId
-                foreground: root.foreground
-                color: hasCursor ? fill : "transparent"
+            Flickable {
+              width: parent.width
+              visible: root.chooserOpen
+              implicitHeight: Math.min(chooserList.implicitHeight, Style.spacing.popupRowHeight * 7)
+              contentWidth: width
+              contentHeight: chooserList.implicitHeight
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
+              flickableDirection: Flickable.VerticalFlick
+              interactive: contentHeight > height
+              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                RowLayout {
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  anchors.leftMargin: Style.space(22)
-                  anchors.rightMargin: Style.space(10)
+              Column {
+                id: chooserList
+                width: parent.width
 
-                  Text {
-                    Layout.fillWidth: true
-                    text: String(modelData.name)
-                    color: root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    elide: Text.ElideRight
+                Repeater {
+                  model: root.chooserOpen ? root.visibleCharacters : []
+                  CursorSurface {
+                    required property var modelData
+                    width: chooserList.width
+                    implicitHeight: Style.spacing.popupRowHeight
+                    hasCursor: String(modelData.id) === ddb.characterId
+                    foreground: root.foreground
+                    color: hasCursor ? fill : "transparent"
+
+                    RowLayout {
+                      anchors.left: parent.left
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      anchors.leftMargin: Style.space(22)
+                      anchors.rightMargin: Style.space(10)
+
+                      Text {
+                        Layout.fillWidth: true
+                        text: String(modelData.name)
+                        color: root.foreground
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.body
+                        elide: Text.ElideRight
+                      }
+                      Text {
+                        visible: String(modelData.campaign || "") !== ""
+                        text: String(modelData.campaign || "")
+                        color: root.dim
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                        elide: Text.ElideRight
+                        Layout.maximumWidth: chooserList.width * 0.4
+                      }
+                    }
+                    MouseArea {
+                      anchors.fill: parent
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: root.chooseCharacter(modelData.id)
+                    }
                   }
-                  Text {
-                    visible: String(modelData.campaign || "") !== ""
-                    text: String(modelData.campaign || "")
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    elide: Text.ElideRight
-                    Layout.maximumWidth: column.width * 0.4
-                  }
-                }
-                MouseArea {
-                  anchors.fill: parent
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.chooseCharacter(modelData.id)
                 }
               }
             }
