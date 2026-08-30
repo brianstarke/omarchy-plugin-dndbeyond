@@ -82,11 +82,10 @@ IDs, and CobaltSession cookie management.
 omarchy plugin add https://github.com/brianstarke/omarchy-plugin-dndbeyond.git
 ```
 
-or from a checkout:
-
-```bash
-./install.sh
-```
+For hacking from a local checkout there are optional convenience scripts
+(`./install.sh` symlinks the checkout into the plugins dir and seeds the auth
+config; `./uninstall.sh` removes it). End users need neither — everything,
+including cookie setup, works through the widget's settings pane.
 
 Then enable the widget (plugins land disabled for review) and place it with
 `omarchy bar move brianstarke.dndbeyond --section left` (or right).

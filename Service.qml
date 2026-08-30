@@ -74,12 +74,28 @@ Item {
   // Write the cookie back, preserving other keys; the cached bearer token
   // belongs to the old cookie, so it goes. Refresh once the write lands.
   function writeConfig(mutate) {
-    var cfg = {}
-    try { cfg = JSON.parse(_configText) } catch (e) {}
-    if (typeof cfg !== "object" || cfg === null) cfg = {}
-    mutate(cfg)
-    configView.pendingSave = true
-    configView.setText(JSON.stringify(cfg, null, 2) + "\n")
+    if (mkdirProc.running) return   // queued after the dir exists; retry via onExited
+    pendingConfigWrite = mutate
+    mkdirProc.running = true
+  }
+
+  property var pendingConfigWrite: null
+
+  Process {
+    id: mkdirProc
+    running: false
+    // FileView can't create parent directories.
+    command: ["mkdir", "-p", root.configPath.replace(/\/[^/]*$/, "")]
+    onExited: function(code) {
+      if (root.pendingConfigWrite === null) return
+      var cfg = {}
+      try { cfg = JSON.parse(root._configText) } catch (e) {}
+      if (typeof cfg !== "object" || cfg === null) cfg = {}
+      root.pendingConfigWrite(cfg)
+      root.pendingConfigWrite = null
+      configView.pendingSave = true
+      configView.setText(JSON.stringify(cfg, null, 2) + "\n")
+    }
   }
 
   function addCharacterId(id) {
