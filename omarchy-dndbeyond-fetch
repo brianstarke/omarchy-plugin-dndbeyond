@@ -575,8 +575,15 @@ def transform_character(char):
                 # usually null, so per-class matching is unreliable anyway.
                 if spellcasting:
                     attack_bonus = spellcasting[0]["attack"]
-            elif definition.get("requiresSavingThrow") and definition.get("saveDcAbilityId"):
-                attack_save = "%s save" % ABILITY_NAMES[definition["saveDcAbilityId"] - 1]
+            elif definition.get("requiresSavingThrow"):
+                if definition.get("saveDcAbilityId"):
+                    attack_save = "%s save" % ABILITY_NAMES[definition["saveDcAbilityId"] - 1]
+                else:
+                    attack_save = "Saving throw"
+                # Character's actual DC, same single-class simplification as
+                # attackBonus above.
+                if spellcasting:
+                    attack_save += " DC %d" % spellcasting[0]["dc"]
             material = ""
             if "M" in components:
                 material = strip_html(str(definition.get("componentsDescription") or ""))

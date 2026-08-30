@@ -26,6 +26,7 @@ check $F '.sheet.abilities[1].score' 20 "fixture DEX: base+bonus+mod"
 V=tests/fixture-vlix.json
 check $V '.sheet.hp.max' 15 "Vlix: CON excluded from baseHitPoints -> add CON x level"
 check $V '.sheet.hp.current' 8 "Vlix: current HP"
+check $V '[.sheet.spells[] | select(.name=="Vicious Mockery")][0].attackSave' "WIS save DC 13" "Vlix: save spell carries DC"
 
 if [[ $failures -gt 0 ]]; then
   echo "$failures check(s) failed" >&2
