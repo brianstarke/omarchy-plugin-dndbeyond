@@ -1,0 +1,81 @@
+{
+  "id": 12345678,
+  "name": "Testonius",
+  "alignmentId": 3,
+  "currentXp": 6500,
+  "inspiration": true,
+  "race": {
+    "fullName": "Wood Elf",
+    "weightSpeeds": {"normal": {"walk": 35, "fly": 0, "swim": 0, "climb": 0, "burrow": 0}},
+    "racialTraits": [
+      {"definition": {"name": "Darkvision", "description": "<p>You can see in <b>dim light</b> within 60 feet.</p>"}}
+    ]
+  },
+  "classes": [
+    {
+      "level": 5,
+      "isStartingClass": true,
+      "definition": {"name": "Ranger", "hitDice": 10, "canCastSpells": true, "spellCastingAbilityId": 5},
+      "subclassDefinition": {"name": "Hunter"},
+      "classFeatures": [
+        {"definition": {"name": "Favored Enemy", "requiredLevel": 1, "description": "<p>Pick a type of enemy.</p>"}}
+      ]
+    }
+  ],
+  "stats": [{"id":1,"value":12},{"id":2,"value":17},{"id":3,"value":14},{"id":4,"value":10},{"id":5,"value":15},{"id":6,"value":8}],
+  "bonusStats": [{"id":1,"value":null},{"id":2,"value":1},{"id":3,"value":null},{"id":4,"value":null},{"id":5,"value":null},{"id":6,"value":null}],
+  "overrideStats": [{"id":1,"value":null},{"id":2,"value":null},{"id":3,"value":null},{"id":4,"value":null},{"id":5,"value":null},{"id":6,"value":null}],
+  "modifiers": {
+    "race": [
+      {"type":"proficiency","subType":"perception","value":null},
+      {"type":"bonus","subType":"dexterity-score","value":2},
+      {"type":"bonus","subType":"wisdom-score","value":1}
+    ],
+    "class": [
+      {"type":"proficiency","subType":"strength-saving-throws","value":null},
+      {"type":"proficiency","subType":"dexterity-saving-throws","value":null},
+      {"type":"proficiency","subType":"stealth","value":null},
+      {"type":"expertise","subType":"survival","value":null}
+    ],
+    "item": [
+      {"type":"bonus","subType":"armor-class","value":1}
+    ],
+    "background": [], "feat": [], "condition": []
+  },
+  "baseHitPoints": 48, "bonusHitPoints": null, "overrideHitPoints": null,
+  "removedHitPoints": 11, "temporaryHitPoints": 5,
+  "inventory": [
+    {"equipped": true, "quantity": 1, "definition": {"name": "Studded Leather", "type": "Light Armor", "filterType": "Armor", "armorClass": 12}},
+    {"equipped": true, "quantity": 1, "definition": {"name": "Shield", "type": "Shield", "filterType": "Armor", "armorClass": 2}},
+    {"equipped": true, "quantity": 1, "definition": {"name": "Longbow", "type": "Longbow", "filterType": "Weapon"}},
+    {"equipped": false, "quantity": 20, "definition": {"name": "Arrows", "type": "Ammunition", "filterType": "Adventuring Gear"}}
+  ],
+  "customItems": [{"name": "Lucky Rock", "quantity": 1}],
+  "currencies": {"cp": 12, "sp": 30, "ep": 0, "gp": 145, "pp": 2},
+  "spellSlots": [{"level":1,"count":4,"used":1},{"level":2,"count":2,"used":0}],
+  "pactMagic": [],
+  "spells": {
+    "class": [
+      {"prepared": true, "alwaysPrepared": false,
+       "definition": {"name": "Hunter's Mark", "level": 1, "school": "Divination", "ritual": false, "concentration": true,
+                      "components": [1], "activation": {"activationType": 3, "activationTime": 1},
+                      "range": {"origin": "Ranged", "rangeValue": 90}}},
+      {"prepared": true, "alwaysPrepared": false,
+       "definition": {"name": "Cure Wounds", "level": 1, "school": "Evocation", "ritual": false, "concentration": false,
+                      "components": [1,2], "activation": {"activationType": 1, "activationTime": 1},
+                      "range": {"origin": "Touch", "rangeValue": null}}}
+    ],
+    "race": [
+      {"prepared": true, "alwaysPrepared": true,
+       "definition": {"name": "Druidcraft", "level": 0, "school": "Transmutation", "ritual": false, "concentration": false,
+                      "components": [1,2], "activation": {"activationType": 1, "activationTime": 1},
+                      "range": {"origin": "Ranged", "rangeValue": 30}}}
+    ],
+    "background": [], "item": [], "feat": []
+  },
+  "feats": [{"definition": {"name": "Sharpshooter", "description": "<p>Long range doesn't impose disadvantage.</p>"}}],
+  "background": {"definition": {"name": "Outlander"}, "customBackground": {}},
+  "campaign": {"name": "Curse of Strahd"},
+  "decorations": {"avatarUrl": "https://example.com/avatar.png"},
+  "conditions": []
+}

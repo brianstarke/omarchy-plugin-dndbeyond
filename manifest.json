@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "brianstarke.dndbeyond",
+  "name": "D&D Beyond",
+  "version": "0.1.0",
+  "author": "Brian Starke",
+  "license": "MIT",
+  "description": "Character sheets from your D&D Beyond account in the bar: stats, skills, spells, features, and inventory in a tabbed card.",
+  "kinds": ["bar-widget"],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "D&D Beyond",
+    "description": "Pick a character from your D&D Beyond account and browse its sheet in tabs: main stats, skills, spells, features, and inventory.",
+    "category": "Games",
+    "aliases": ["dnd", "d&d", "dndbeyond", "character", "sheet"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 300,
+      "width": 480,
+      "maxHeight": 640,
+      "defaultTab": "Main",
+      "showHealth": true,
+      "colorHealth": true,
+      "showCharacterName": false,
+      "extraCharacterIds": ""
+    },
+    "schema": [
+      { "key": "refreshIntervalSec", "type": "integer", "label": "Refresh interval (seconds)", "min": 60, "max": 3600, "step": 60, "defaultValue": 300, "description": "How often the open card re-fetches the selected character sheet." },
+      { "key": "width", "type": "integer", "label": "Card width (px)", "min": 360, "max": 900, "step": 20, "defaultValue": 480 },
+      { "key": "maxHeight", "type": "integer", "label": "Max card height (px)", "min": 300, "max": 1400, "step": 20, "defaultValue": 640 },
+      { "key": "defaultTab", "type": "enum", "label": "Default tab", "options": ["Main", "Skills", "Spells", "Features", "Inventory", "Notes"], "defaultValue": "Main", "description": "The tab shown when the card opens." },
+      { "key": "showHealth", "type": "boolean", "label": "Show HP in bar", "defaultValue": true, "description": "Show current/max hit points next to the dice glyph in the bar." },
+      { "key": "colorHealth", "type": "boolean", "label": "Color HP by health", "defaultValue": true, "description": "Tint the bar HP numbers green above 75%, yellow between, red below 25%." },
+      { "key": "showCharacterName", "type": "boolean", "label": "Show character name in bar", "defaultValue": false, "description": "Show the selected character's name in the bar next to the dice glyph." },
+      { "key": "extraCharacterIds", "type": "string", "label": "Additional character IDs", "defaultValue": "", "description": "Comma-separated character IDs (from the dndbeyond.com/characters/<id> URL) to add to the picker, e.g. shared or private characters the account list misses." }
+    ]
+  }
+}

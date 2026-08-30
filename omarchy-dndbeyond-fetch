@@ -1,0 +1,867 @@
+#!/usr/bin/env python3
+"""omarchy-dndbeyond-fetch — read D&D Beyond characters for the Omarchy widget.
+
+Uses the same unofficial endpoints the D&D Beyond web app uses. Auth is the
+`CobaltSession` cookie from a logged-in browser session, stored in:
+
+    ~/.config/omarchy-dndbeyond/config.json
+    { "cobaltSession": "...", "userId": 12345, "characterIds": [98765] }
+
+`userId` is optional (derived from the session token when absent).
+`characterIds` is optional extra IDs to always include in the list.
+
+Commands:
+  list          List characters on the account.
+  sheet <id>    Fetch one character and emit a simplified sheet.
+  _raw <id>     Debug: fetch one character and dump the raw v5 payload.
+  rest <short|long> <id>
+                Take a rest server-side (restores slots/HP), emit fresh sheet.
+  auth-check    Verify the session cookie still exchanges for a token.
+  _parse        Debug: read raw v5 character JSON on stdin, emit the sheet.
+
+Every command prints one JSON object with at least {"state", "message"}.
+Exit code is 0 on success, 1 on failure; the JSON is authoritative either way.
+"""
+
+import base64
+import re
+import json
+import os
+import stat
+import sys
+import time
+import urllib.error
+import urllib.request
+
+CHARACTER_SERVICE = "https://character-service.dndbeyond.com"
+WATERDEEP = "https://www.dndbeyond.com"
+COBALT_TOKEN_URL = "https://auth-service.dndbeyond.com/v1/cobalt-token"
+USER_AGENT = "omarchy-plugin-dndbeyond/0.1.0"
+
+ABILITY_NAMES = ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
+ABILITY_FULL = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"]
+ABILITY_SCORE_SUBTYPES = [
+    "strength-score", "dexterity-score", "constitution-score",
+    "intelligence-score", "wisdom-score", "charisma-score",
+]
+SAVE_SUBTYPES = [
+    "strength-saving-throws", "dexterity-saving-throws", "constitution-saving-throws",
+    "intelligence-saving-throws", "wisdom-saving-throws", "charisma-saving-throws",
+]
+SKILLS = [
+    ("Acrobatics", 2, "acrobatics"), ("Animal Handling", 5, "animal-handling"),
+    ("Arcana", 4, "arcana"), ("Athletics", 1, "athletics"),
+    ("Deception", 6, "deception"), ("History", 4, "history"),
+    ("Insight", 5, "insight"), ("Intimidation", 6, "intimidation"),
+    ("Investigation", 4, "investigation"), ("Medicine", 5, "medicine"),
+    ("Nature", 4, "nature"), ("Perception", 5, "perception"),
+    ("Performance", 6, "performance"), ("Persuasion", 6, "persuasion"),
+    ("Religion", 4, "religion"), ("Sleight of Hand", 2, "sleight-of-hand"),
+    ("Stealth", 2, "stealth"), ("Survival", 5, "survival"),
+]
+ALIGNMENTS = {1: "Lawful Good", 2: "Neutral Good", 3: "Chaotic Good",
+              4: "Lawful Neutral", 5: "Neutral", 6: "Chaotic Neutral",
+              7: "Lawful Evil", 8: "Neutral Evil", 9: "Chaotic Evil"}
+ACTIVATION_TYPES = {1: "Action", 2: "No action", 3: "Bonus action", 4: "Reaction",
+                    6: "Minute", 7: "Hour", 8: "Special"}
+COMPONENT_LETTERS = {1: "V", 2: "S", 3: "M"}
+# Warlock pact magic by warlock level: (slot count, slot level).
+PACT_MAGIC_TABLE = {1: (1, 1), 2: (2, 1), 3: (2, 2), 4: (2, 2), 5: (2, 3),
+                    6: (2, 3), 7: (2, 4), 8: (2, 4), 9: (2, 5), 10: (2, 5),
+                    11: (3, 5), 12: (3, 5), 13: (3, 5), 14: (3, 5), 15: (3, 5),
+                    16: (3, 5), 17: (4, 5), 18: (4, 5), 19: (4, 5), 20: (4, 5)}
+
+
+# --------------------------------------------------------------------------
+# config / token
+# --------------------------------------------------------------------------
+
+def config_dir():
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(xdg, "omarchy-dndbeyond")
+
+
+def config_path():
+    return os.path.join(config_dir(), "config.json")
+
+
+def token_path():
+    return os.path.join(config_dir(), "token.json")
+
+
+def state_path():
+    return os.path.join(config_dir(), "state.json")
+
+
+def load_state():
+    try:
+        with open(state_path(), "r", encoding="utf-8") as fh:
+            state = json.load(fh)
+            return state if isinstance(state, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_state(state):
+    try:
+        os.makedirs(config_dir(), exist_ok=True)
+        with open(state_path(), "w", encoding="utf-8") as fh:
+            json.dump(state, fh)
+        os.chmod(state_path(), stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
+
+
+def save_selected(char_id):
+    state = load_state()
+    state["selectedCharacterId"] = str(char_id)
+    save_state(state)
+
+
+def load_config():
+    try:
+        with open(config_path(), "r", encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except FileNotFoundError:
+        fail("no-auth",
+             "No config at %s — see the plugin README for setup." % config_path())
+    except (OSError, json.JSONDecodeError) as exc:
+        fail("error", "Unreadable config %s: %s" % (config_path(), exc))
+    if not isinstance(cfg, dict) or not cfg.get("cobaltSession"):
+        fail("no-auth",
+             "Config %s needs a \"cobaltSession\" value — see the plugin README." % config_path())
+    return cfg
+
+
+def http_json(url, headers=None, method="GET", body=None, soft=False):
+    req_headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
+    if headers:
+        req_headers.update(headers)
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        req_headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if soft:
+            return None
+        if exc.code in (401, 403):
+            fail("no-auth", "D&D Beyond rejected the session (HTTP %d) — re-copy the CobaltSession cookie." % exc.code)
+        fail("error", "D&D Beyond API error: HTTP %d for %s" % (exc.code, url))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        if soft:
+            return None
+        fail("error", "Could not reach D&D Beyond: %s" % exc)
+
+
+def unwrap(payload):
+    """D&D Beyond wraps payloads in either {success, data} or {status, data}."""
+    if isinstance(payload, dict) and "data" in payload:
+        if payload.get("success") is False:
+            fail("error", "D&D Beyond error: %s" % payload.get("message", "unknown"))
+        if payload.get("success") is True or payload.get("status") == "success":
+            return payload["data"]
+    return payload
+
+
+def unwrap_soft(payload):
+    if isinstance(payload, dict) and "data" in payload:
+        if payload.get("success") is True or payload.get("status") == "success":
+            return payload["data"]
+        return None
+    return payload
+
+
+def get_token(cfg):
+    try:
+        with open(token_path(), "r", encoding="utf-8") as fh:
+            cached = json.load(fh)
+        if cached.get("token") and cached.get("expiresAt", 0) - 30 > time.time():
+            return cached["token"]
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    payload = http_json(COBALT_TOKEN_URL, method="POST", body={},
+                        headers={"Cookie": "CobaltSession=%s" % cfg["cobaltSession"]})
+    token = payload.get("token")
+    if not token:
+        fail("no-auth", "Token exchange returned no token — session cookie likely expired.")
+    ttl = int(payload.get("ttl") or 900)
+    try:
+        os.makedirs(config_dir(), exist_ok=True)
+        with open(token_path(), "w", encoding="utf-8") as fh:
+            json.dump({"token": token, "expiresAt": time.time() + ttl}, fh)
+        os.chmod(token_path(), stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass  # cache miss next run; harmless
+    return token
+
+
+def bearer(token):
+    return {"Authorization": "Bearer %s" % token}
+
+
+def jwt_user_id(token):
+    """Cobalt tokens are JWTs; pull a numeric user id from the payload claims."""
+    try:
+        segment = token.split(".")[1]
+        segment += "=" * (-len(segment) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(segment.encode("ascii")))
+    except (IndexError, ValueError, UnicodeDecodeError):
+        return None
+    for key in ("userId", "user_id", "id", "sub"):
+        value = claims.get(key)
+        try:
+            return int(str(value))
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+# --------------------------------------------------------------------------
+# list
+# --------------------------------------------------------------------------
+
+def cmd_list(cfg, token, extra_ids=None):
+    characters = []
+    seen = set()
+
+    def add(char_id, name, campaign=""):
+        if char_id in seen:
+            return
+        seen.add(char_id)
+        characters.append({"id": char_id, "name": str(name or "Unnamed"), "campaign": str(campaign or "")})
+
+    user_id = cfg.get("userId") or jwt_user_id(token)
+    if user_id:
+        url = "%s/character/v5/characters/list?userId=%s" % (CHARACTER_SERVICE, user_id)
+        data = unwrap(http_json(url, headers=bearer(token)))
+        for row in data or []:
+            add(row.get("id"), row.get("name"))
+        if characters:
+            emit({"state": "ok", "message": "", "characters": characters,
+          "selectedId": load_state().get("selectedCharacterId") or ""})
+
+    # Fall back (or supplement) with characters reachable through campaigns.
+    headers = bearer(token)
+    headers["Cookie"] = "CobaltSession=%s" % cfg["cobaltSession"]
+    campaigns = unwrap(http_json(WATERDEEP + "/api/campaign/stt/active-campaigns", headers=headers))
+    for campaign in campaigns or []:
+        url = "%s/api/campaign/stt/active-short-characters/%s" % (WATERDEEP, campaign.get("id"))
+        rows = unwrap(http_json(url, headers=headers))
+        for row in rows or []:
+            add(row.get("id"), row.get("characterName") or row.get("name"), campaign.get("name"))
+
+    for char_id in cfg.get("characterIds") or []:
+        try:
+            add(int(char_id), "Character %s" % char_id)
+        except (TypeError, ValueError):
+            continue
+
+    # Extra IDs from the widget settings pane (comma-separated string).
+    for raw in str(extra_ids or "").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            add(int(raw), "Character %s" % raw)
+        except ValueError:
+            continue
+
+    # Explicit IDs (config + pane) only knew their ID — resolve real names.
+    # Cached in state.json so listing stays one request for known IDs.
+    placeholders = [c for c in characters if c["name"].startswith("Character ")]
+    if placeholders:
+        state = load_state()
+        cache = state.get("nameCache")
+        if not isinstance(cache, dict):
+            cache = {}
+        changed = False
+        for char in placeholders:
+            key = str(char["id"])
+            if cache.get(key):
+                char["name"] = cache[key]
+                continue
+            url = "%s/character/v5/character/%s?includeCustomItems=true" % (CHARACTER_SERVICE, char["id"])
+            data = http_json(url, headers=bearer(token), soft=True)
+            name = ((unwrap_soft(data)) or {}).get("name") if data else None
+            if name:
+                char["name"] = str(name)
+                cache[key] = str(name)
+                changed = True
+        if changed:
+            state["nameCache"] = cache
+            save_state(state)
+
+    if not characters:
+        fail("error", "No characters found. Add \"userId\" or \"characterIds\" to %s." % config_path())
+    emit({"state": "ok", "message": "", "characters": characters,
+          "selectedId": load_state().get("selectedCharacterId") or ""})
+
+
+# --------------------------------------------------------------------------
+# sheet transform
+# --------------------------------------------------------------------------
+
+def strip_html(text):
+    if not text:
+        return ""
+    out = re.sub(r"<br\s*/?>", "\n", str(text))
+    out = re.sub(r"</p>\s*<p[^>]*>", "\n\n", out)
+    out = re.sub(r"<[^>]*>", "", out)
+    for ent, rep in (("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+                     ("&quot;", '"'), ("&#39;", "'"), ("&rsquo;", "’"),
+                     ("&ndash;", "–"), ("&mdash;", "—")):
+        out = out.replace(ent, rep)
+    out = re.sub(r"&#(\d+);", lambda m: chr(int(m.group(1))), out)
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
+
+
+def modifier_list(modifiers):
+    for group in (modifiers or {}).values():
+        if isinstance(group, list):
+            for mod in group:
+                if isinstance(mod, dict):
+                    yield mod
+
+
+def sum_bonuses(modifiers, sub_type, mod_type="bonus"):
+    return sum(m.get("value") or 0 for m in modifier_list(modifiers)
+               if m.get("type") == mod_type and m.get("subType") == sub_type)
+
+
+def has_modifier(modifiers, sub_type, mod_type):
+    return any(m.get("type") == mod_type and m.get("subType") == sub_type
+               for m in modifier_list(modifiers))
+
+
+def ability_score(char, ability_id):
+    for stat in char.get("overrideStats") or []:
+        if stat.get("id") == ability_id and stat.get("value") is not None:
+            return stat["value"]
+    base = next((s.get("value") for s in char.get("stats") or [] if s.get("id") == ability_id), 10)
+    bonus = next((s.get("value") for s in char.get("bonusStats") or [] if s.get("id") == ability_id), 0)
+    bonus = (bonus or 0) + sum_bonuses(char.get("modifiers"), ABILITY_SCORE_SUBTYPES[ability_id - 1])
+    return (base if base is not None else 10) + bonus
+
+
+def mod_of(score):
+    return (score - 10) // 2
+
+
+def proficiency_bonus(level):
+    return (level + 3) // 4 + 1
+
+
+def compute_max_hp(char, con_mod, level):
+    """Max HP from the v5 payload.
+
+    Newer sheets (2024 rules) report baseHitPoints WITHOUT the CON bonus;
+    older ones bake it in. Detect by comparing against the class hit-dice
+    total (first level takes the die max, later levels the rounded-up
+    average). Also honor Tough-style hit-point modifiers.
+    """
+    override = char.get("overrideHitPoints")
+    if override is not None:
+        return override
+    base = char.get("baseHitPoints") or 0
+    bonus = char.get("bonusHitPoints") or 0
+    mods = char.get("modifiers")
+    extra = sum_bonuses(mods, "hit-points") + sum_bonuses(mods, "hit-points-per-level") * level
+    dice_hp = 0
+    first_level = True
+    classes = sorted(char.get("classes") or [], key=lambda c: not c.get("isStartingClass"))
+    for cls in classes:
+        die = (cls.get("definition") or {}).get("hitDice") or 8
+        for _ in range(cls.get("level") or 0):
+            dice_hp += die if first_level else die // 2 + 1
+            first_level = False
+    if dice_hp and base == dice_hp:
+        base += con_mod * level
+    return base + bonus + extra
+
+
+def compute_ac(char, dex_mod, con_mod, wis_mod):
+    base, armor, shield = 10, "none", 0
+    for item in char.get("inventory") or []:
+        if not item.get("equipped"):
+            continue
+        definition = item.get("definition") or {}
+        kind = str(definition.get("type") or "").lower()
+        filt = str(definition.get("filterType") or "").lower()
+        if "shield" in kind:
+            shield = definition.get("armorClass") or 2
+        elif "armor" in kind:
+            base = definition.get("armorClass") or 10
+            if "heavy" in filt or "heavy" in kind:
+                armor = "heavy"
+            elif "medium" in filt or "medium" in kind:
+                armor = "medium"
+            else:
+                armor = "light"
+    if armor == "none":
+        class_names = {str((c.get("definition") or {}).get("name") or "") for c in char.get("classes") or []}
+        if "Barbarian" in class_names:
+            ac = 10 + dex_mod + con_mod
+        elif "Monk" in class_names:
+            ac = 10 + dex_mod + wis_mod
+        else:
+            ac = 10 + dex_mod
+    elif armor == "light":
+        ac = base + dex_mod
+    elif armor == "medium":
+        ac = base + min(dex_mod, 2)
+    else:
+        ac = base
+    ac += shield
+    mods = char.get("modifiers")
+    ac += sum_bonuses(mods, "armor-class") + sum_bonuses(mods, "armored-armor-class") \
+        + sum_bonuses(mods, "unarmored-armor-class")
+    return ac
+
+
+def activation_label(definition):
+    act = definition.get("activation") or {}
+    kind = act.get("activationType")
+    label = ACTIVATION_TYPES.get(kind, "")
+    amount = act.get("activationTime")
+    if kind in (6, 7) and amount:
+        label = "%s %s%s" % (amount, label, "s" if amount != 1 else "")
+    return label
+
+
+def duration_label(definition):
+    dur = definition.get("duration") or {}
+    kind = dur.get("durationType") or ""
+    interval = dur.get("durationInterval")
+    unit = dur.get("durationUnit")
+    if interval and unit:
+        label = "%d %s%s" % (interval, unit, "s" if interval != 1 else "")
+    else:
+        label = kind
+    if definition.get("concentration"):
+        label = ("Concentration, up to " + label.lower()) if label else "Concentration"
+    return label
+
+
+def range_label(definition):
+    rng = definition.get("range") or {}
+    if rng.get("rangeValue"):
+        return "%s ft" % rng["rangeValue"]
+    origin = str(rng.get("origin") or "")
+    return {"Ranged": "", "Touch": "Touch", "Self": "Self"}.get(origin, origin)
+
+
+def transform_character(char):
+    classes = char.get("classes") or []
+    level = sum(c.get("level") or 0 for c in classes) or 1
+    prof = proficiency_bonus(level)
+    modifiers = char.get("modifiers")
+
+    abilities = []
+    scores = {}
+    for ability_id in range(1, 7):
+        score = ability_score(char, ability_id)
+        scores[ability_id] = score
+        mod = mod_of(score)
+        save_prof = has_modifier(modifiers, SAVE_SUBTYPES[ability_id - 1], "proficiency")
+        abilities.append({
+            "id": ability_id, "abbr": ABILITY_NAMES[ability_id - 1],
+            "name": ABILITY_FULL[ability_id - 1], "score": score, "mod": mod,
+            "save": mod + (prof if save_prof else 0), "saveProf": save_prof,
+        })
+
+    skills = []
+    for name, ability_id, sub_type in SKILLS:
+        expert = has_modifier(modifiers, sub_type, "expertise")
+        profi = has_modifier(modifiers, sub_type, "proficiency")
+        total = mod_of(scores[ability_id])
+        total += sum_bonuses(modifiers, sub_type)
+        if expert:
+            total += prof * 2
+        elif profi:
+            total += prof
+        skills.append({"name": name, "ability": ABILITY_NAMES[ability_id - 1],
+                       "mod": total, "prof": 2 if expert else (1 if profi else 0)})
+
+    max_hp = compute_max_hp(char, mod_of(scores.get(3, 10)), level)
+    hp = {"current": max_hp - (char.get("removedHitPoints") or 0),
+          "max": max_hp, "temp": char.get("temporaryHitPoints") or 0}
+
+    hit_dice = "+".join("%dd%d" % (c.get("level") or 0, (c.get("definition") or {}).get("hitDice") or 8)
+                        for c in classes)
+
+    speeds = char.get("race", {}).get("weightSpeeds", {}).get("normal", {}) or {}
+    walk = (speeds.get("walk") or 0) + sum_bonuses(modifiers, "speed") \
+        + sum_bonuses(modifiers, "speed-walking")
+    speed_parts = ["%d ft" % walk] if walk else []
+    for kind, label in (("fly", "fly"), ("swim", "swim"), ("climb", "climb"), ("burrow", "burrow")):
+        value = speeds.get(kind) or 0
+        if value:
+            speed_parts.append("%s %d ft" % (label, value))
+
+    perception = next((s for s in skills if s["name"] == "Perception"), {"mod": 0})
+    passive_perception = 10 + perception["mod"] + sum_bonuses(modifiers, "passive-perception")
+
+    # Spellcasting per class: ability comes from the class definition.
+    spellcasting = []
+    for cls in classes:
+        definition = cls.get("definition") or {}
+        ability_id = definition.get("spellCastingAbilityId")
+        if not definition.get("canCastSpells") and not ability_id:
+            continue
+        if ability_id:
+            mod = mod_of(scores.get(ability_id, 10))
+            spellcasting.append({
+                "class": definition.get("name") or "",
+                "ability": ABILITY_NAMES[ability_id - 1],
+                "dc": 8 + prof + mod, "attack": prof + mod,
+            })
+
+    slots = []
+    for slot in char.get("spellSlots") or []:
+        total = slot.get("count") if slot.get("count") is not None else slot.get("available")
+        used = slot.get("used") or 0
+        if total is not None and (total or used):
+            slots.append({"level": slot.get("level"), "max": max(total, used), "used": used})
+    # Pact magic payload rows are per spell level with an unreliable "available"
+    # (2024 sheets report 0). Slot count/level are table-driven, so derive the
+    # max from the warlock level and take only "used" from the payload.
+    warlock_level = sum(c.get("level") or 0 for c in classes
+                        if (c.get("definition") or {}).get("name") == "Warlock")
+    pact_rows = char.get("pactMagic") or []
+    if warlock_level and pact_rows:
+        pact_count, pact_level = PACT_MAGIC_TABLE.get(min(warlock_level, 20), (2, 9))
+        used = 0
+        for row in pact_rows:
+            if row.get("level") == pact_level:
+                used = row.get("used") or 0
+                break
+        else:
+            used = max((r.get("used") or 0) for r in pact_rows)
+        slots.append({"level": pact_level, "max": pact_count,
+                      "used": min(used, pact_count), "pact": True})
+
+    spells = []
+    spell_groups = char.get("spells") or {}
+    # classSpells holds the per-class spellbook (warlock cantrips like
+    # Eldritch Blast live here, not under spells.class).
+    merged_groups = [("class", spell_groups.get("class")), ("race", spell_groups.get("race")),
+                     ("background", spell_groups.get("background")),
+                     ("item", spell_groups.get("item")), ("feat", spell_groups.get("feat"))]
+    for class_group in char.get("classSpells") or []:
+        merged_groups.append(("class", class_group.get("spells")))
+    # Classes with spellPrepareType prepare daily (wizard, cleric…); for them
+    # only prepared spells display. Known-casters (warlock, sorcerer…) display
+    # everything they know.
+    any_prepare_class = any((c.get("definition") or {}).get("spellPrepareType")
+                            for c in classes)
+    for source, group in merged_groups:
+        for entry in group or []:
+            definition = entry.get("definition") or {}
+            components = "".join(COMPONENT_LETTERS.get(c, "") for c in definition.get("components") or [])
+            # Detail payload for the expandable row.
+            higher = definition.get("atHigherLevels") or {}
+            higher_text = "\n".join(strip_html(t) for t in higher.get("higherLevelDescriptions") or [] if t)
+            attack_save = ""
+            attack_bonus = None
+            if definition.get("requiresAttackRoll"):
+                attack_save = "Spell attack roll"
+                # Single-class casters dominate; multiclass uses the first
+                # spellcasting entry. Entry-level spellCastingAbilityId is
+                # usually null, so per-class matching is unreliable anyway.
+                if spellcasting:
+                    attack_bonus = spellcasting[0]["attack"]
+            elif definition.get("requiresSavingThrow") and definition.get("saveDcAbilityId"):
+                attack_save = "%s save" % ABILITY_NAMES[definition["saveDcAbilityId"] - 1]
+            material = ""
+            if "M" in components:
+                material = strip_html(str(definition.get("componentsDescription") or ""))
+            # Damage dice live in the spell's modifiers. Cantrip scaling is not
+            # in the payload: beams-style entries (Eldritch Blast) give extra
+            # beams per tier, other damage cantrips multiply dice at 5/11/17.
+            damage_entries = []
+            for mod in definition.get("modifiers") or []:
+                if mod.get("type") != "damage":
+                    continue
+                die = mod.get("die") or {}
+                if die.get("diceString"):
+                    damage_entries.append({
+                        "dice": die["diceString"],
+                        "type": str(mod.get("friendlySubtypeName") or mod.get("subType") or ""),
+                    })
+            if damage_entries and definition.get("level") == 0:
+                tiers = [h for h in higher.get("higherLevelDefinitions") or []
+                         if (h.get("level") or 99) <= level]
+                if tiers:
+                    mult = 1 + sum(h.get("value") or 0 for h in tiers)
+                else:
+                    mult = 4 if level >= 17 else 3 if level >= 11 else 2 if level >= 5 else 1
+                if mult > 1:
+                    for entry in damage_entries:
+                        m2 = re.match(r"(\d+)d(\d+)", entry["dice"])
+                        if m2:
+                            entry["dice"] = "%dd%s" % (int(m2.group(1)) * mult, m2.group(2))
+            spells.append({
+                "name": definition.get("name") or "?",
+                "level": definition.get("level") or 0,
+                "school": definition.get("school") or "",
+                "prepared": bool(entry.get("prepared") or entry.get("alwaysPrepared")),
+                "alwaysPrepared": bool(entry.get("alwaysPrepared")),
+                "known": bool(entry.get("prepared") or entry.get("alwaysPrepared")
+                              or not any_prepare_class),
+                "ritual": bool(definition.get("ritual")),
+                "concentration": bool(definition.get("concentration")),
+                "castingTime": activation_label(definition),
+                "range": range_label(definition),
+                "components": components,
+                "source": source,
+                "duration": duration_label(definition),
+                "attackSave": attack_save,
+                "attackBonus": attack_bonus,
+                "damage": damage_entries,
+                "material": material,
+                "description": strip_html(definition.get("description")),
+                "atHigherLevels": higher_text,
+            })
+    seen_ids = set()
+    unique_spells = []
+    for s in spells:
+        key = (s["name"], s["level"])
+        if key in seen_ids:
+            continue
+        seen_ids.add(key)
+        unique_spells.append(s)
+    spells = unique_spells
+    spells.sort(key=lambda s: (s["level"], s["name"]))
+
+    features = []
+    for cls in classes:
+        definition = cls.get("definition") or {}
+        subclass = cls.get("subclassDefinition") or {}
+        source = definition.get("name") or ""
+        if subclass.get("name"):
+            source = "%s (%s)" % (source, subclass["name"])
+        for feat in cls.get("classFeatures") or []:
+            fd = feat.get("definition") or feat
+            features.append({
+                "name": fd.get("name") or "?",
+                "source": source,
+                "level": fd.get("requiredLevel") or feat.get("requiredLevel") or 0,
+                "description": strip_html(fd.get("description")),
+            })
+    for trait in (char.get("race") or {}).get("racialTraits") or []:
+        td = trait.get("definition") or trait
+        features.append({"name": td.get("name") or "?", "source": "Racial trait",
+                         "level": 0, "description": strip_html(td.get("description"))})
+    for feat in char.get("feats") or []:
+        fd = feat.get("definition") or {}
+        features.append({"name": fd.get("name") or "?", "source": "Feat",
+                         "level": 0, "description": strip_html(fd.get("description"))})
+
+    # Equipped weapons -> attack rolls. Ability: DEX for ranged/finesse (best of
+    # STR/DEX for finesse), STR otherwise. Proficiency assumed for equipped
+    # weapons; "magic" granted modifiers add to attack and damage.
+    attacks = []
+    for item in char.get("inventory") or []:
+        if not item.get("equipped"):
+            continue
+        definition = item.get("definition") or {}
+        damage = definition.get("damage") or {}
+        if (definition.get("filterType") or "") != "Weapon" and not damage.get("diceString"):
+            continue
+        props = {p.get("name") for p in definition.get("properties") or []}
+        dex_mod = mod_of(scores.get(2, 10))
+        str_mod = mod_of(scores.get(1, 10))
+        if definition.get("attackType") == 2:
+            ability_mod = dex_mod
+        elif "Finesse" in props:
+            ability_mod = max(str_mod, dex_mod)
+        else:
+            ability_mod = str_mod
+        magic = sum(m.get("value") or 0 for m in definition.get("grantedModifiers") or []
+                    if m.get("subType") == "magic")
+        attacks.append({
+            "name": definition.get("name") or "?",
+            "attackMod": ability_mod + prof + magic,
+            "damage": damage.get("diceString") or "",
+            "damageBonus": ability_mod + magic,
+            "damageType": str(definition.get("damageType") or ""),
+            "properties": ", ".join(sorted(p for p in props if p)),
+        })
+
+    inventory = []
+    for item in char.get("inventory") or []:
+        definition = item.get("definition") or {}
+        inventory.append({
+            "name": definition.get("name") or "?",
+            "type": definition.get("filterType") or definition.get("type") or "",
+            "quantity": item.get("quantity") or 1,
+            "equipped": bool(item.get("equipped")),
+            "attuned": bool(item.get("isAttuned")),
+        })
+    for item in char.get("customItems") or []:
+        inventory.append({"name": item.get("name") or "?", "type": "Custom",
+                          "quantity": item.get("quantity") or 1, "equipped": False, "attuned": False})
+    inventory.sort(key=lambda i: (not i["equipped"], i["name"].lower()))
+
+    currencies = char.get("currencies") or {}
+    background = char.get("background") or {}
+    background_name = (background.get("definition") or {}).get("name") \
+        or (background.get("customBackground") or {}).get("name") or ""
+
+    note_fields = (("backstory", "Backstory"), ("allies", "Allies"),
+                   ("organizations", "Organizations"), ("enemies", "Enemies"),
+                   ("personalPossessions", "Personal possessions"),
+                   ("otherHoldings", "Other holdings"), ("otherNotes", "Other notes"))
+    raw_notes = char.get("notes") or {}
+    notes = [{"title": label, "text": strip_html(str(raw_notes.get(key) or ""))}
+             for key, label in note_fields if raw_notes.get(key)]
+
+    class_rows = []
+    for cls in sorted(classes, key=lambda c: not c.get("isStartingClass")):
+        definition = cls.get("definition") or {}
+        subclass = cls.get("subclassDefinition") or {}
+        class_rows.append({"name": definition.get("name") or "?",
+                           "subclass": subclass.get("name") or "",
+                           "level": cls.get("level") or 0})
+
+    conditions = []
+    for cond in char.get("conditions") or []:
+        cd = cond.get("definition") or cond
+        if cd.get("name"):
+            conditions.append(str(cd["name"]))
+
+    return {
+        "id": char.get("id"),
+        "name": char.get("name") or "Unnamed",
+        "race": (char.get("race") or {}).get("fullName") or "",
+        "background": background_name,
+        "alignment": ALIGNMENTS.get(char.get("alignmentId"), ""),
+        "classes": class_rows,
+        "level": level,
+        "xp": char.get("currentXp") or 0,
+        "campaign": (char.get("campaign") or {}).get("name") or "",
+        "avatarUrl": ((char.get("decorations") or {}).get("avatarUrl")) or "",
+        "inspiration": bool(char.get("inspiration")),
+        "conditions": conditions,
+        "abilities": abilities,
+        "profBonus": prof,
+        "initiative": mod_of(scores.get(2, 10)) + sum_bonuses(modifiers, "initiative"),
+        "speed": ", ".join(speed_parts),
+        "passivePerception": passive_perception,
+        "hp": hp,
+        "hitDice": hit_dice,
+        "ac": compute_ac(char, mod_of(scores.get(2, 10)), mod_of(scores.get(3, 10)),
+                         mod_of(scores.get(5, 10))),
+        "attacks": attacks,
+        "skills": skills,
+        "spellcasting": spellcasting,
+        "spellSlots": slots,
+        "spells": spells,
+        "features": features,
+        "notes": notes,
+        "inventory": inventory,
+        "currency": {k: currencies.get(k) or 0 for k in ("pp", "gp", "ep", "sp", "cp")},
+        "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+
+
+def cmd_select(char_id):
+    save_selected(char_id)
+    emit({"state": "ok", "message": "", "selectedId": str(char_id)})
+
+
+def cmd_sheet(cfg, token, char_id):
+    url = "%s/character/v5/character/%s?includeCustomItems=true" % (CHARACTER_SERVICE, char_id)
+    char = unwrap(http_json(url, headers=bearer(token)))
+    if not isinstance(char, dict) or char.get("id") is None:
+        fail("error", "Character %s not found or not shared with this account." % char_id)
+    emit({"state": "ok", "message": "", "sheet": transform_character(char)})
+
+
+def cmd_rest(cfg, token, kind, char_id):
+    """Server-side rest: short restores pact magic/short-rest abilities,
+    long additionally restores HP, slots, hit dice, death saves. Returns the
+    fresh sheet so the panel updates in one step."""
+    if kind not in ("short", "long"):
+        fail("error", "usage: omarchy-dndbeyond-fetch rest short|long <character-id>")
+    url = "%s/character/v5/character/rest/%s?characterId=%s" % (CHARACTER_SERVICE, kind, char_id)
+    unwrap(http_json(url, headers=bearer(token)))
+    cmd_sheet(cfg, token, char_id)
+
+
+def cmd_auth_check(cfg, token):
+    user_id = cfg.get("userId") or jwt_user_id(token)
+    emit({"state": "ok",
+          "message": "Session valid%s." % (", user id %s" % user_id if user_id else "")})
+
+
+# --------------------------------------------------------------------------
+# entry
+# --------------------------------------------------------------------------
+
+def emit(payload):
+    json.dump(payload, sys.stdout)
+    sys.stdout.write("\n")
+    sys.exit(0)
+
+
+def fail(state, message):
+    json.dump({"state": state, "message": str(message)}, sys.stdout)
+    sys.stdout.write("\n")
+    sys.exit(1)
+
+
+def main(argv):
+    if len(argv) < 2 or argv[1] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0 if len(argv) >= 2 else 1
+    command = argv[1]
+
+    if command == "_parse":
+        char = json.load(sys.stdin)
+        emit({"state": "ok", "message": "", "sheet": transform_character(char)})
+
+    if command in ("sheet", "_raw") and len(argv) < 3:
+        fail("error", "usage: omarchy-dndbeyond-fetch %s <character-id>" % command)
+    if command == "rest" and len(argv) < 4:
+        fail("error", "usage: omarchy-dndbeyond-fetch rest short|long <character-id>")
+    if command == "select" and len(argv) < 3:
+        fail("error", "usage: omarchy-dndbeyond-fetch select <character-id>")
+    if command not in ("list", "sheet", "_raw", "rest", "select", "auth-check"):
+        fail("error", "unknown command %r — try --help" % command)
+
+    cfg = load_config()
+    if command == "select":
+        cmd_select(argv[2])
+    token = get_token(cfg)
+    if command == "list":
+        extra = ""
+        if "--extra-ids" in argv:
+            pos = argv.index("--extra-ids")
+            if pos + 1 < len(argv):
+                extra = argv[pos + 1]
+        cmd_list(cfg, token, extra)
+    elif command == "sheet":
+        cmd_sheet(cfg, token, argv[2])
+    elif command == "_raw":
+        url = "%s/character/v5/character/%s?includeCustomItems=true" % (CHARACTER_SERVICE, argv[2])
+        emit(unwrap(http_json(url, headers=bearer(token))))
+    elif command == "rest":
+        cmd_rest(cfg, token, argv[2], argv[3])
+    else:
+        cmd_auth_check(cfg, token)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv))
+    except KeyboardInterrupt:
+        fail("error", "interrupted")
+    except Exception as exc:  # last resort: still emit JSON the panel can read
+        fail("error", "%s: %s" % (type(exc).__name__, exc))
