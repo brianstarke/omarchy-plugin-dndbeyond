@@ -1,0 +1,68 @@
+{
+  "id": 900001,
+  "name": "Test Warlock",
+  "alignmentId": 5,
+  "currentXp": 300,
+  "inspiration": false,
+  "race": {"fullName": "Human", "weightSpeeds": {"normal": {"walk": 30, "fly": 0, "swim": 0, "climb": 0, "burrow": 0}}, "racialTraits": []},
+  "classes": [
+    {
+      "level": 2,
+      "isStartingClass": true,
+      "definition": {"name": "Warlock", "hitDice": 8, "canCastSpells": true, "spellCastingAbilityId": 6},
+      "subclassDefinition": {"name": "Archfey"},
+      "classFeatures": []
+    }
+  ],
+  "stats": [{"id":1,"value":10},{"id":2,"value":14},{"id":3,"value":13},{"id":4,"value":10},{"id":5,"value":10},{"id":6,"value":16}],
+  "bonusStats": [{"id":1,"value":null},{"id":2,"value":null},{"id":3,"value":null},{"id":4,"value":null},{"id":5,"value":null},{"id":6,"value":null}],
+  "overrideStats": [{"id":1,"value":null},{"id":2,"value":null},{"id":3,"value":null},{"id":4,"value":null},{"id":5,"value":null},{"id":6,"value":null}],
+  "modifiers": {"race": [], "class": [], "background": [], "item": [], "feat": [], "condition": []},
+  "baseHitPoints": 13,
+  "bonusHitPoints": null,
+  "overrideHitPoints": null,
+  "removedHitPoints": 7,
+  "temporaryHitPoints": 0,
+  "inventory": [],
+  "customItems": [],
+  "currencies": {"cp": 0, "sp": 0, "ep": 0, "gp": 0, "pp": 0},
+  "spellSlots": [{"level":1,"used":0,"available":0},{"level":2,"used":0,"available":0}],
+  "pactMagic": [{"level":1,"used":1,"available":0},{"level":2,"used":0,"available":0}],
+  "spells": {"class": [], "race": [], "background": [], "item": [], "feat": []},
+  "classSpells": [
+    {
+      "characterClassId": 1,
+      "spells": [
+        {
+          "prepared": false,
+          "alwaysPrepared": false,
+          "usesSpellSlot": false,
+          "definition": {
+            "name": "Eldritch Mockery",
+            "level": 0,
+            "school": "Enchantment",
+            "ritual": false,
+            "concentration": false,
+            "requiresSavingThrow": true,
+            "saveDcAbilityId": 5,
+            "components": [1],
+            "activation": {"activationType": 1, "activationTime": 1},
+            "range": {"origin": "Ranged", "rangeValue": 60},
+            "duration": {"durationType": "Instantaneous", "durationInterval": 0},
+            "description": "<p>You mock them, eldritchly.</p>",
+            "modifiers": [
+              {"type": "damage", "subType": "psychic", "friendlySubtypeName": "Psychic",
+               "die": {"diceCount": 1, "diceValue": 4, "diceString": "1d4"}}
+            ],
+            "atHigherLevels": {"higherLevelDefinitions": []}
+          }
+        }
+      ]
+    }
+  ],
+  "feats": [],
+  "background": {"definition": {"name": "Urchin"}, "customBackground": {}},
+  "campaign": null,
+  "decorations": {},
+  "conditions": []
+}

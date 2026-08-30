@@ -1,0 +1,38 @@
+{
+  "id": 900002,
+  "name": "Test Bard",
+  "alignmentId": 5,
+  "currentXp": 900,
+  "inspiration": false,
+  "race": {"fullName": "Human", "weightSpeeds": {"normal": {"walk": 30, "fly": 0, "swim": 0, "climb": 0, "burrow": 0}}, "racialTraits": []},
+  "classes": [
+    {
+      "level": 3,
+      "isStartingClass": true,
+      "definition": {"name": "Bard", "hitDice": 8, "canCastSpells": true, "spellCastingAbilityId": 6},
+      "subclassDefinition": null,
+      "classFeatures": []
+    }
+  ],
+  "stats": [{"id":1,"value":10},{"id":2,"value":10},{"id":3,"value":10},{"id":4,"value":10},{"id":5,"value":10},{"id":6,"value":10}],
+  "bonusStats": [{"id":1,"value":null},{"id":2,"value":null},{"id":3,"value":null},{"id":4,"value":null},{"id":5,"value":null},{"id":6,"value":null}],
+  "overrideStats": [{"id":1,"value":null},{"id":2,"value":null},{"id":3,"value":null},{"id":4,"value":null},{"id":5,"value":null},{"id":6,"value":null}],
+  "modifiers": {"race": [], "class": [], "background": [], "item": [], "feat": [], "condition": []},
+  "baseHitPoints": 24,
+  "bonusHitPoints": null,
+  "overrideHitPoints": null,
+  "removedHitPoints": 0,
+  "temporaryHitPoints": 0,
+  "inventory": [],
+  "customItems": [],
+  "currencies": {"cp": 0, "sp": 0, "ep": 0, "gp": 0, "pp": 0},
+  "spellSlots": [{"level":1,"used":1,"available":0},{"level":2,"used":0,"available":0}],
+  "pactMagic": [],
+  "spells": {"class": [], "race": [], "background": [], "item": [], "feat": []},
+  "classSpells": [],
+  "feats": [],
+  "background": {"definition": {"name": "Entertainer"}, "customBackground": {}},
+  "campaign": null,
+  "decorations": {},
+  "conditions": []
+}
